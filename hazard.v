@@ -21,6 +21,7 @@
 
 
 module hazard(
+    input wire i_stall,d_stall,
     input wire[4:0] rsE,rtE,writeregM,writeregW,writeregfinalE,rsD,rtD,
     input wire regwriteM,regwriteW,memtoregE,memtoregM,regwriteE,judgeM,hiloweE,jumpD,jumptoregD,
     input wire[5:0] labelD,
@@ -28,7 +29,8 @@ module hazard(
     input wire cp0readE,cp0writeM,
     input wire [4:0] cp0addrE,cp0addrM,
     output wire[1:0] forwardAE,forwardBE,
-    output wire stallF,stallD,stallE,flushD,flushE
+    output wire stallF,stallD,stallE,stallM,stallW,flushD,flushE,
+    output wire all_stall
     );
 
     assign forwardAE=((rsE!=5'b0)&&(rsE==writeregM)&&regwriteM)?2'b10:
@@ -52,9 +54,20 @@ module hazard(
     (memtoregM&(writeregM==rsD)));
     assign cp0stall=cp0readE&cp0writeM&(cp0addrE==cp0addrM);
 
-    assign stallF=lwstall|divstall|jumpstall|cp0stall;
-    assign stallD=lwstall|divstall|jumpstall|cp0stall;
-    assign stallE=divstall;
+    assign all_stall = i_stall | d_stall;
+    assign stallF=lwstall|divstall|jumpstall|cp0stall|all_stall;
+    assign stallD=lwstall|divstall|jumpstall|cp0stall|all_stall;
+    assign stallE=divstall|all_stall;
+    assign stallM = all_stall;
+    assign stallW = all_stall;
+
     assign flushE=lwstall|judgeM;
     assign flushD=judgeM;
+    
+    
+    // assign stallF = longest_stall | stall_ltypeD;
+    // assign stallD = longest_stall | stall_ltypeD;
+    // assign stallE = longest_stall;
+    // assign stallM = longest_stall;
+    // assign stallW = longest_stall;
 endmodule

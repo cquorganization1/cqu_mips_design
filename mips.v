@@ -22,18 +22,63 @@
 
 module mips(
 	input wire clk,rst,
+	input wire[5:0] ext_int,
+
+	// //inst
+    // output wire [31:0] pcF,
+    // // output wire [31:0] pc_next,
+    // output wire inst_enF,
+    // input wire [31:0] instrF,
+    // input wire i_stall,
+    // // output wire stallF,
+
+	//inst
 	output wire[31:0] pcfinalF,
+	output wire inst_enF,//1.缺失使能信号
 	input wire[31:0] instrF,
-	output wire[3:0] memwritefinalM,
-	output wire[31:0] aluoutfinalM,writedatafinalM,
-	input wire[31:0] readdataM,
-	output wire[31:0] pcW,
-	output wire regwriteW,
-	output wire [4:0] writeregW,
-	output wire [31:0] resultW,
-	input wire[5:0] ext_int
+	input wire i_stall,//2.缺失暂停信号
+
+	//data
+    // output wire mem_enM,                    
+    // output wire [31:0] mem_addrM,   //读/写地址
+    // input wire [31:0] mem_rdataM,   //读数据
+    // output wire [3:0] mem_wenM,     //写使能
+    // output wire [31:0] mem_wdataM,  //写数据
+    // input wire d_stall,
+    // // output wire [31:0] mem_addrE,
+    // // output wire mem_read_enE,
+    // // output wire mem_write_enE,
+    // // output wire stallM,
+
+    // output wire longest_stall,
+
+	//data
+	output wire mem_enM,//1.缺失存储器读写使能
+	output wire[31:0] aluoutfinalM ,   //读/写地址
+	input wire[31:0] readdataM,       //读数据
+	output wire[3:0] memwritefinalM,  //写使能
+	output wire[31:0] writedatafinalM,//写数据
+	input wire d_stall,   //2.缺失存储器暂停信号
+	output wire all_stall,
+
+	//debug
+	output wire [31:0]  debug_wb_pc,      
+    output wire [3:0]   debug_wb_rf_wen,
+    output wire [4:0]   debug_wb_rf_wnum, 
+    output wire [31:0]  debug_wb_rf_wdata
     );
 	
+	// inst和data部分信号赋值
+	assign inst_enF = 1'b1;
+	assign mem_enM = 1'b1;
+	
+	//debug信号赋值
+	assign debug_wb_pc = pcW;
+	assign debug_wb_rf_wen = {4{regwriteW & ~stallW}};
+	assign debug_wb_rf_wnum = writeregW;
+	assign debug_wb_rf_wdata = resultW;
+
+
 	//F阶段变量
 	wire stallF;
 	wire [31:0] pcF,pcplus4F,pc_preF,pc_inF,pc_rightF,pc_memoryF;
@@ -87,10 +132,15 @@ module mips(
 	wire [31:0] excepttypeM,badaddriM,badaddrifinalM,
 				excepttypenextM,excepttypefinalM,dataaddrM;
 	wire loadexceptM,storeexceptM;
+	wire flushM,stallM;
+
 
 	//W阶段变量
-	wire [31:0] aluoutW,readdataW;
+	wire [31:0] pcW,aluoutW,readdataW;
 	wire [3:0] memtoregW;
+	wire flushW,stallW,regwriteW;
+	wire [4:0]  writeregW; 
+	wire [31:0]  resultW;
 
 	//译码模块（部分译码在ALU模块）
 	decoder decoder(
@@ -103,13 +153,15 @@ module mips(
 
 	//冒险模块
 	hazard hazard(
+		i_stall,d_stall,
 		rsE,rtE,writeregM,writeregW,writeregfinalE,rsD,rtD,
 		regwriteM,regwriteW,memtoregE[0],memtoregM[0],regwriteE,judgeM,hiloweE,jumpD,jumptoregD,
 		labelD,
 		divstartE,divdoneE,
 		cp0readE,cp0writeM,cp0addrE,cp0addrM,
 		forwardaE,forwardbE,
-		stallF,stallD,stallE,flushD,flushE
+		stallF,stallD,stallE,stallM,stallW,flushD,flushE,
+		all_stall
 	);
 
 	//分支预测模块
@@ -231,28 +283,29 @@ module mips(
 		overflowE
 	);
 
+	assign flushM = 1'b0;
 	//EM
-	flopr #(32) r1M(clk,rst,srcb2E,writedataM);
-	flopr #(32) r2M(clk,rst,aluoutE,aluoutM);
-	flopr #(5) r3M(clk,rst,writeregfinalE,writeregM);
-	flopr #(6) r4M(clk,rst,labelE,labelM);
-	flopr #(32) r5M(clk,rst,pcplus4E,pcplus4M);
-	flopr #(1) r6M(clk,rst,regwriteE,regwriteM);
-	flopr #(4) r7M(clk,rst,memtoregE,memtoregM);
-	flopr #(4) r8M(clk,rst,memwriteE,memwriteM);
-	flopr #(1) r9M(clk,rst,branchE,branchM);
-	flopr #(1) r10M(clk,rst,pred_takeE,pred_takeM);
-	flopr #(1) r11M(clk,rst,needbranchE,needbranchM);
-	flopr #(32) r12M(clk,rst,pcbranchE,pcbranchM);
-	flopr #(2) r13M(clk,rst,lbshiftE,lbshiftM);
-	flopr #(1) r14M(clk,rst,isindelayslotE,isindelayslotM);
-	flopr #(5) r15M(clk,rst,cp0addrE,cp0addrM);
-	flopr #(1) r16M(clk,rst,cp0writeE,cp0writeM);
-	flopr #(32) r17M(clk,rst,excepttypefinalE,excepttypeM);
-	flopr #(32) r18M(clk,rst,badaddriE,badaddriM);
-	flopr #(32) r19M(clk,rst,pcE,pcM);
+	flopenrc #(32) r1M(clk,rst,~stallM,flushM,srcb2E,writedataM);
+	flopenrc #(32) r2M(clk,rst,~stallM,flushM,aluoutE,aluoutM);
+	flopenrc #(5) r3M(clk,rst,~stallM,flushM,writeregfinalE,writeregM);
+	flopenrc #(6) r4M(clk,rst,~stallM,flushM,labelE,labelM);
+	flopenrc #(32) r5M(clk,rst,~stallM,flushM,pcplus4E,pcplus4M);
+	flopenrc #(1) r6M(clk,rst,~stallM,flushM,regwriteE,regwriteM);
+	flopenrc #(4) r7M(clk,rst,~stallM,flushM,memtoregE,memtoregM);
+	flopenrc #(4) r8M(clk,rst,~stallM,flushM,memwriteE,memwriteM);
+	flopenrc #(1) r9M(clk,rst,~stallM,flushM,branchE,branchM);
+	flopenrc #(1) r10M(clk,rst,~stallM,flushM,pred_takeE,pred_takeM);
+	flopenrc #(1) r11M(clk,rst,~stallM,flushM,needbranchE,needbranchM);
+	flopenrc #(32) r12M(clk,rst,~stallM,flushM,pcbranchE,pcbranchM);
+	flopenrc #(2) r13M(clk,rst,~stallM,flushM,lbshiftE,lbshiftM);
+	flopenrc #(1) r14M(clk,rst,~stallM,flushM,isindelayslotE,isindelayslotM);
+	flopenrc #(5) r15M(clk,rst,~stallM,flushM,cp0addrE,cp0addrM);
+	flopenrc #(1) r16M(clk,rst,~stallM,flushM,cp0writeE,cp0writeM);
+	flopenrc #(32) r17M(clk,rst,~stallM,flushM,excepttypefinalE,excepttypeM);
+	flopenrc #(32) r18M(clk,rst,~stallM,flushM,badaddriE,badaddriM);
+	flopenrc #(32) r19M(clk,rst,~stallM,flushM,pcE,pcM);
 
-
+	
 	//M阶段连线
 	mux2#(32) mux2M1(pcplus4M+32'h4,pcbranchM,(needbranchM&branchM),pc_memoryF);
 	load load(readdataM,memtoregM,lbshiftM,readdatafinalM);
@@ -268,13 +321,14 @@ module mips(
 	mux2#(32) mux2M3(excepttypeM,32'h00000004,loadexceptM,excepttypenextM);  //load异常
 	mux2#(32) mux2M4(excepttypenextM,32'h00000005,storeexceptM,excepttypefinalM);  //store异常
 
+	assign flushW = 1'b0;
 	//MW
-	flopr #(32) r1W(clk,rst,aluoutM,aluoutW);
-	flopr #(32) r2W(clk,rst,readdatafinalM,readdataW);
-	flopr #(5) r3W(clk,rst,writeregM,writeregW);
-	flopr #(1) r4W(clk,rst,regwriteM,regwriteW);
-	flopr #(4) r5W(clk,rst,memtoregM,memtoregW);
-	flopr #(32) r6W(clk,rst,pcM,pcW);
+	flopenrc #(32) r1W(clk,rst,~stallW,flushM,aluoutM,aluoutW);
+	flopenrc #(32) r2W(clk,rst,~stallW,flushM,readdatafinalM,readdataW);
+	flopenrc #(5) r3W(clk,rst,~stallW,flushM,writeregM,writeregW);
+	flopenrc #(1) r4W(clk,rst,~stallW,flushM,regwriteM,regwriteW);
+	flopenrc #(4) r5W(clk,rst,~stallW,flushM,memtoregM,memtoregW);
+	flopenrc #(32) r6W(clk,rst,~stallW,flushM,pcM,pcW);
 
 	//W阶段连线
 	mux2 #(32) resmux(aluoutW,readdataW,memtoregW[0],resultW);
