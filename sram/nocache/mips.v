@@ -72,7 +72,7 @@ module mips(
 	wire [1:0] lbshiftE;
 	wire isindelayslotE,cp0writeE,cp0readE;
 	wire [4:0] cp0addrE;
-	wire [31:0] readcp0dataE,readcp0datafinalE,excepttypeE,excepttypefinalE,badaddriE,epcE;
+	wire [31:0] readcp0dataE,readcp0datafinalE,excepttypeE,excepttypefinalE,badaddriE,epcE,statusE,causeE;
 	wire hiforwardE,loforwardE,cp0forwardE;
 
 	//M阶段变量
@@ -81,15 +81,15 @@ module mips(
 	wire [31:0] readdatafinalM,writedataM,pcM,pcplus4M,pcbranchM,aluoutM;
 	wire [31:0] hi_iM,lo_iM;
 	wire [5:0] labelM;
-	wire [3:0] memtoregM,memwriteM;
+	wire [3:0] memtoregM,memwriteM,memwritecheckM;
 	wire [1:0] lbshiftM;
 	wire isindelayslotM,cp0writeM,hiloweM;
 	wire [4:0] cp0addrM,rsM,rtM;
 	wire [31:0] excepttypeM,badaddriM,badaddrifinalM,
-				excepttypenextM,excepttypefinalM,dataaddrM;
+				excepttypenextM,excepttypenextnextM,excepttypefinalM,dataaddrM;
 	wire loadexceptM,storeexceptM;
 	wire [31:0] branchsrcaM,branchsrcbM;
-	wire [31:0] epcM;
+	wire [31:0] epcM,statusM,causeM;
 
 	//W阶段变量
 	wire [31:0] aluoutW,readdataW;
@@ -135,7 +135,7 @@ module mips(
 		.int_i(ext_int),
 		.excepttype_i(excepttypefinalM),.current_inst_addr_i(pcM),
 		.is_in_delayslot_i(isindelayslotM),.bad_addr_i(badaddrifinalM),
-		.data_o(readcp0dataE),.epc_o(epcE)
+		.data_o(readcp0dataE),.epc_o(epcE),.status_o(statusE),.cause_o(causeE)
 	);
 
 	regfile regfile(clk,rst,regwriteW,rsD,rtD,writeregW,resultW,srcaD,srcbD,
@@ -220,7 +220,6 @@ module mips(
 	flopenrc #(32) r22E(clk,rst,~stallE,flushE,excepttypefinalD,excepttypeE);
 	flopenrc #(32) r23E(clk,rst,~stallE,flushE,badaddriD,badaddriE);
 	flopenrc #(32) r24E(clk,rst,~stallE,flushE,pcD,pcE);
-	flopenrc #(32) r25E(clk,rst,~stallE,flushE,epcE,epcM);
 	flopenrc #(1) r26E(clk,rst,~stallE,flushE,divsignedD,divsignedE);
 	flopenrc #(1) r27E(clk,rst,~stallE,flushE,divstartD,divstartE);
 
@@ -280,12 +279,17 @@ module mips(
 	flopenrc #(32) r21M(clk,rst,~stallM,flushM,hi_iE,hi_iM);
 	flopenrc #(32) r22M(clk,rst,~stallM,flushM,lo_iE,lo_iM);
 	flopenrc #(1) r23M(clk,rst,~stallM,flushM,hiloweE,hiloweM);
+	flopenrc #(32) r24M(clk,rst,~stallM,flushM,epcE,epcM);
+	flopenrc #(32) r25M(clk,rst,~stallM,flushM,statusE,statusM);
+	flopenrc #(32) r26M(clk,rst,~stallM,flushM,causeE,causeM);
 
 	//M阶段连线
-	mux2#(32) mux2M1(pcplus4M+32'h4,pcbranchM,(needbranchM&branchM),pc_memoryF);
+	mux2 #(32) mux2M1(pcplus4M+32'h4,pcbranchM,(needbranchM&branchM),pc_memoryF);
 
 	load load(readdataM,memtoregM,lbshiftM,readdatafinalM);
-	save save(writedataM,memwriteM,lbshiftM,writedatafinalM,memwritefinalM);
+	save save(writedataM,memwriteM,lbshiftM,writedatafinalM,memwritecheckM);
+	//异常地址不进行写入
+	mux2 #(4) mux2M5(memwritecheckM,4'b0000,excepttypefinalM==32'h00000005,memwritefinalM);
 
 	branchdecide branchdecide(labelM,branchsrcaM,branchsrcbM,needbranchM);
 	assign judgeM = branchM&(needbranchM^pred_takeM); //1:不同，代表预测错误
@@ -298,7 +302,9 @@ module mips(
 	
 	mux2#(32) mux2M2(badaddriM,dataaddrM,loadexceptM|storeexceptM,badaddrifinalM);  //数据地址是否错误
 	mux2#(32) mux2M3(excepttypeM,32'h00000004,loadexceptM,excepttypenextM);  //load异常
-	mux2#(32) mux2M4(excepttypenextM,32'h00000005,storeexceptM,excepttypefinalM);  //store异常
+	mux2#(32) mux2M4(excepttypenextM,32'h00000005,storeexceptM,excepttypenextnextM);  //store异常
+	mux2#(32) mux2M6(excepttypenextnextM,32'h00000001,(((causeM[15:8]&statusM[15:8])!=8'b0))
+					&(statusM[1]==1'b0)&(statusM[0]==1'b1),excepttypefinalM);  //中断
 
 	//MW
 	flopenrc #(32) r1W(clk,rst,~stallW,flushW,aluoutM,aluoutW);

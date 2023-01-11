@@ -51,19 +51,19 @@ module hazard(
 
     assign lwstall=((rsD==writeregfinalE)|(rtD==writeregfinalE))&memtoregE;
     assign jumpstall=jumpD&jumptoregD&((regwriteE&(writeregfinalE==rsD))|(memtoregM&(writeregM==rsD)));
-    assign divstall=divstartE&(~divdoneE)&(excepttypefinalM==0);
+    assign divstall=divstartE&(~divdoneE)&(excepttypefinalM==32'h0);
 
     assign exceptflush=(excepttypefinalM!=32'h0);
 
-    assign stallF=lwstall|jumpstall|divstall;
+    assign stallF=(lwstall|jumpstall|divstall)&(excepttypefinalM==32'h0);
     assign stallD=lwstall|jumpstall|divstall;
     assign stallE=divstall;
     assign stallM=1'b0;
     assign stallW=1'b0;  
     assign flushF=1'b0;
     assign flushD=judgeM|exceptflush;
-    assign flushE=judgeM|lwstall|jumpstall|exceptflush;
-    assign flushM=divstall|exceptflush;
+    assign flushE=(judgeM&divstall==1'b0)|lwstall|jumpstall|exceptflush;
+    assign flushM=exceptflush|divstall;
     assign flushW=exceptflush;
     
 endmodule
