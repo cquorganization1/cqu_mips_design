@@ -12,8 +12,8 @@ BHT[(1<<BHT_DEPTH)-1:0] <='{default: '0};
 （但是该代码在vivado中会报错）
 
 # 代码引用：
-* mycqu_top.v：头文件
-* mips_core.v：
+* mycqu_top.v：头文件，连接mips_core.v和cpu_axi_interface.v模块(实现sram_like->axi的转化)
+* mips_core.v：连接mips、i_sram_to_sram_like.v、d_sram_to_sram_like.v模块（实现sram->sram_like的转化）
 * i_sram_to_sram_like.v：实现指令存储sram->sram_like的转化和握手逻辑
 * d_sram_to_sram_like.v：实现数据存储sram->sram_like的转化和握手逻辑
 
